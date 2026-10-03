@@ -28,7 +28,7 @@ fi
 echo "📦 Instalando dependencias de Node.js..."
 npm install --silent
 
-echo "📦 Descargando último motor oficial de descarga (yt-dlp)..."
+echo "📦 Descargando último motor descarga"
 mkdir -p "$TARGET_DIR/bin"
 OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then
@@ -42,5 +42,5 @@ echo "🔗 Registrando comando global 'slurp'..."
 npm install -g "$TARGET_DIR" --silent || npm link --silent
 
 echo ""
-echo "🎉 ¡Slurp instalado correctamente con el último motor de descarga!"
+echo "🎉 ¡Slurp instalado correctamente"
 echo "Uso: slurp --spotify <URL_SPOTIFY> o simplemente: slurp"
