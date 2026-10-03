@@ -80,6 +80,14 @@ Si su sistema operativo (Windows, macOS o Linux) carece del binario de `yt-dlp`,
 ### 4. Resumen Previo con Puerta de Confirmación
 Nunca descarga a ciegas. Slurp extrae los títulos, presenta una muestra legible de las pistas encontradas, el total detectado y solicita confirmación expresa `(s/n)` antes de consumir ancho de banda o almacenamiento.
 
+### 5. Integración con la Carpeta Nativa de Música
+Olvídese de buscar archivos perdidos en carpetas temporales del terminal. Slurp organiza y almacena sus descargas directamente en la carpeta oficial de Música de su sistema operativo:
+- **macOS**: `~/Music/slurp/<Nombre_Playlist>`
+- **Windows**: `C:\Users\<Usuario>\Music\slurp\<Nombre_Playlist>`
+- **Linux**: `~/Music/slurp/<Nombre_Playlist>`
+
+Al completar el proceso, el asistente le ofrece abrir la carpeta automáticamente en su explorador de archivos con un solo Enter.
+
 ---
 
 ## Usage Reference / Commands

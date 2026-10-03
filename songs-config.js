@@ -12,7 +12,12 @@ export const SONGS = [
  * Configuración general de descarga
  */
 export const CONFIG = {
-  downloadPath: "./downloads",
+  // Carpeta de descarga: null guardará automáticamente en tu carpeta nativa de Música:
+  // - Windows:  C:\Users\<Usuario>\Music\slurp
+  // - macOS:    ~/Music/slurp
+  // - Linux:    ~/Music/slurp
+  downloadPath: null,
+
   audioQuality: "192K",
   delayBetweenDownloads: 2000, // Tiempo de espera en milisegundos entre descargas
   maxFilenameLength: 200,

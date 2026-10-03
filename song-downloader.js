@@ -5,6 +5,7 @@ import { spawn, execSync } from "child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import os from "os";
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 import { CONFIG, SONGS } from "./songs-config.js";
@@ -13,13 +14,6 @@ import { ensureDependencies, detectOS, downloadStandaloneBinary } from "./doctor
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const DOWNLOADS_PATH = CONFIG.downloadPath || "./downloads";
-
-// Prepara carpeta de descargas
-if (!existsSync(DOWNLOADS_PATH)) {
-  mkdirSync(DOWNLOADS_PATH, { recursive: true });
-}
 
 // Obtener versión desde package.json
 const getVersion = () => {
@@ -31,13 +25,49 @@ const getVersion = () => {
   }
 };
 
-// Sanitizar nombres de archivo para compatibilidad en sistemas operativos (Windows, macOS, Linux)
+// Sanitizar nombres de archivo y carpetas para compatibilidad multiplataforma
 const sanitizeFilename = (filename) => {
   return filename
     .replace(/[<>:"/\\|?*]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .substring(0, CONFIG.maxFilenameLength || 200);
+};
+
+// Resuelve la carpeta de destino:
+// Por defecto se guarda en la carpeta nativa de Música del sistema operativo:
+// - macOS:    ~/Music/slurp/<NombrePlaylist>
+// - Windows:  C:\Users\<Usuario>\Music\slurp\<NombrePlaylist>
+// - Linux:    ~/Music/slurp/<NombrePlaylist>
+const resolveDownloadPath = (playlistName) => {
+  if (CONFIG.downloadPath) {
+    return CONFIG.downloadPath;
+  }
+
+  const baseMusic = join(os.homedir(), "Music", "slurp");
+  if (playlistName && !playlistName.startsWith("Archivo local")) {
+    const cleanSubdir = playlistName
+      .replace(/^Spotify\s*\((.+)\)$/, "$1")
+      .replace(/^Spotify:\s*/, "")
+      .trim();
+    return join(baseMusic, sanitizeFilename(cleanSubdir));
+  }
+  return baseMusic;
+};
+
+// Abre la carpeta de descargas en el gestor de archivos nativo
+const openFolderInExplorer = (folderPath) => {
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+  try {
+    if (isWin) {
+      spawn("explorer.exe", [folderPath], { detached: true, stdio: "ignore" }).unref();
+    } else if (isMac) {
+      spawn("open", [folderPath], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      spawn("xdg-open", [folderPath], { detached: true, stdio: "ignore" }).unref();
+    }
+  } catch (_) {}
 };
 
 // Actualiza una línea limpia en la terminal (sin llenar el TTY de spam)
@@ -60,10 +90,10 @@ const commitLine = (text) => {
 };
 
 // Descarga individual usando yt-dlp con auto-recuperación ante 403
-const downloadSong = async (ytDlpBin, songTitle, index, total, retried = false) => {
+const downloadSong = async (ytDlpBin, targetFolder, songTitle, index, total, retried = false) => {
   const prefix = `[${String(index + 1).padStart(String(total).length, " ")}/${total}]`;
   const sanitizedTitle = sanitizeFilename(songTitle);
-  const outputTemplate = `${DOWNLOADS_PATH}/${sanitizedTitle}.%(ext)s`;
+  const outputTemplate = `${targetFolder}/${sanitizedTitle}.%(ext)s`;
   const searchQuery = `ytsearch1:${songTitle}`;
 
   updateLine(`${prefix} ⏳ Descargando: "${songTitle}"...`);
@@ -106,7 +136,7 @@ const downloadSong = async (ytDlpBin, songTitle, index, total, retried = false) 
 
     // Conversión a MP3 para este archivo específico
     updateLine(`${prefix} 🎙️  Convirtiendo a MP3: "${songTitle}"...`);
-    await convertSingleTrackToMp3(sanitizedTitle);
+    await convertSingleTrackToMp3(targetFolder, sanitizedTitle);
 
     commitLine(`${prefix} ✅ "${songTitle}.mp3" listo`);
     return { success: true, bin: ytDlpBin };
@@ -115,7 +145,7 @@ const downloadSong = async (ytDlpBin, songTitle, index, total, retried = false) 
       commitLine(`${prefix} ⚠️  Detectado bloqueo HTTP 403 de YouTube. Actualizando motor de descarga automáticamente...`);
       try {
         const updatedBin = await downloadStandaloneBinary(detectOS().platform);
-        return await downloadSong(updatedBin, songTitle, index, total, true);
+        return await downloadSong(updatedBin, targetFolder, songTitle, index, total, true);
       } catch (updateErr) {
         commitLine(`${prefix} ❌ No se pudo auto-actualizar el motor: ${updateErr.message}`);
       }
@@ -127,14 +157,14 @@ const downloadSong = async (ytDlpBin, songTitle, index, total, retried = false) 
 };
 
 // Convierte el archivo descargado a MP3 y elimina el formato intermedio
-const convertSingleTrackToMp3 = async (sanitizedTitle) => {
-  const files = readdirSync(DOWNLOADS_PATH).filter((f) =>
+const convertSingleTrackToMp3 = async (targetFolder, sanitizedTitle) => {
+  const files = readdirSync(targetFolder).filter((f) =>
     f.startsWith(sanitizedTitle) && /\.(webm|m4a|opus|ogg)$/i.test(f)
   );
 
   for (const file of files) {
-    const inputPath = join(DOWNLOADS_PATH, file);
-    const outputPath = join(DOWNLOADS_PATH, `${sanitizedTitle}.mp3`);
+    const inputPath = join(targetFolder, file);
+    const outputPath = join(targetFolder, `${sanitizedTitle}.mp3`);
 
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn(ffmpegInstaller.path, [
@@ -309,10 +339,17 @@ const run = async () => {
       return;
     }
 
+    // Resolver carpeta de descarga nativa
+    const targetFolder = resolveDownloadPath(sourceName);
+    if (!existsSync(targetFolder)) {
+      mkdirSync(targetFolder, { recursive: true });
+    }
+
     // Resumen inicial
     console.log("\n" + "─".repeat(56));
     console.log(`📋 Origen:               ${sourceName}`);
     console.log(`🎶 Canciones detectadas: ${songList.length} pista(s)`);
+    console.log(`📁 Carpeta de destino:   ${targetFolder}`);
     console.log("─".repeat(56));
 
     console.log("\nMuestra de canciones a descargar:");
@@ -326,15 +363,15 @@ const run = async () => {
 
     // Pregunta de confirmación
     const confirm = (await rl.question(`\n¿Deseas iniciar la descarga de estas ${songList.length} canciones? (s/n) [s]: `)).trim().toLowerCase();
-    rl.close();
 
     if (confirm === "n" || confirm === "no") {
       console.log("\n🛑 Descarga cancelada por el usuario.");
+      rl.close();
       return;
     }
 
     console.log("\n🚀 Iniciando proceso de descarga y conversión a MP3...");
-    console.log(`📁 Carpeta de destino: ${DOWNLOADS_PATH}\n`);
+    console.log(`📁 Guardando en: ${targetFolder}\n`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -343,7 +380,7 @@ const run = async () => {
 
     for (let i = 0; i < songList.length; i++) {
       const song = songList[i];
-      const result = await downloadSong(currentBin, song, i, songList.length);
+      const result = await downloadSong(currentBin, targetFolder, song, i, songList.length);
 
       if (result.bin) {
         currentBin = result.bin;
@@ -366,8 +403,17 @@ const run = async () => {
     console.log("📊 Resumen de Descarga:");
     console.log(`   ✅ Descargadas exitosamente: ${successCount}`);
     console.log(`   ❌ Descargas fallidas:      ${errorCount}`);
-    console.log(`   📁 Carpeta:                  ${DOWNLOADS_PATH}`);
+    console.log(`   📁 Carpeta:                  ${targetFolder}`);
     console.log("=".repeat(56) + "\n");
+
+    if (successCount > 0 && process.stdout.isTTY) {
+      const askOpen = (await rl.question("¿Deseas abrir la carpeta de música ahora? (s/n) [s]: ")).trim().toLowerCase();
+      if (askOpen !== "n" && askOpen !== "no") {
+        openFolderInExplorer(targetFolder);
+      }
+    }
+
+    rl.close();
   } catch (err) {
     rl.close();
     console.error(`\n💥 Error en el proceso: ${err.message}`);
