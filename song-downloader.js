@@ -9,7 +9,7 @@ import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 import { CONFIG, SONGS } from "./songs-config.js";
 import { getSpotifyTracks, parseSpotifyUrl } from "./spotify.js";
-import { ensureDependencies, detectOS } from "./doctor.js";
+import { ensureDependencies, detectOS, downloadStandaloneBinary } from "./doctor.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -59,8 +59,8 @@ const commitLine = (text) => {
   console.log(text);
 };
 
-// Descarga individual usando yt-dlp
-const downloadSong = async (ytDlpBin, songTitle, index, total) => {
+// Descarga individual usando yt-dlp con auto-recuperación ante 403
+const downloadSong = async (ytDlpBin, songTitle, index, total, retried = false) => {
   const prefix = `[${String(index + 1).padStart(String(total).length, " ")}/${total}]`;
   const sanitizedTitle = sanitizeFilename(songTitle);
   const outputTemplate = `${DOWNLOADS_PATH}/${sanitizedTitle}.%(ext)s`;
@@ -109,10 +109,20 @@ const downloadSong = async (ytDlpBin, songTitle, index, total) => {
     await convertSingleTrackToMp3(sanitizedTitle);
 
     commitLine(`${prefix} ✅ "${songTitle}.mp3" listo`);
-    return true;
+    return { success: true, bin: ytDlpBin };
   } catch (error) {
+    if (error.message.includes("403") && !retried) {
+      commitLine(`${prefix} ⚠️  Detectado bloqueo HTTP 403 de YouTube. Actualizando motor de descarga automáticamente...`);
+      try {
+        const updatedBin = await downloadStandaloneBinary(detectOS().platform);
+        return await downloadSong(updatedBin, songTitle, index, total, true);
+      } catch (updateErr) {
+        commitLine(`${prefix} ❌ No se pudo auto-actualizar el motor: ${updateErr.message}`);
+      }
+    }
+
     commitLine(`${prefix} ❌ Error en "${songTitle}": ${error.message.split("\n")[0]}`);
-    return false;
+    return { success: false, bin: ytDlpBin };
   }
 };
 
@@ -329,11 +339,17 @@ const run = async () => {
     let successCount = 0;
     let errorCount = 0;
 
+    let currentBin = ytDlpBin;
+
     for (let i = 0; i < songList.length; i++) {
       const song = songList[i];
-      const ok = await downloadSong(ytDlpBin, song, i, songList.length);
+      const result = await downloadSong(currentBin, song, i, songList.length);
 
-      if (ok) {
+      if (result.bin) {
+        currentBin = result.bin;
+      }
+
+      if (result.success) {
         successCount++;
       } else {
         errorCount++;

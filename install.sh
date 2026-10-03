@@ -28,9 +28,19 @@ fi
 echo "📦 Instalando dependencias de Node.js..."
 npm install --silent
 
+echo "📦 Descargando último motor oficial de descarga (yt-dlp)..."
+mkdir -p "$TARGET_DIR/bin"
+OS="$(uname -s)"
+if [ "$OS" = "Darwin" ]; then
+  curl -L -s https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos -o "$TARGET_DIR/bin/yt-dlp"
+else
+  curl -L -s https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o "$TARGET_DIR/bin/yt-dlp"
+fi
+chmod +x "$TARGET_DIR/bin/yt-dlp"
+
 echo "🔗 Registrando comando global 'slurp'..."
 npm install -g "$TARGET_DIR" --silent || npm link --silent
 
 echo ""
-echo "🎉 ¡Slurp instalado correctamente!"
+echo "🎉 ¡Slurp instalado correctamente con el último motor de descarga!"
 echo "Uso: slurp --spotify <URL_SPOTIFY> o simplemente: slurp"

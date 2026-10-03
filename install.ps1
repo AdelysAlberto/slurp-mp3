@@ -25,11 +25,19 @@ if (Test-Path $targetDir) {
     Set-Location $targetDir
 }
 
-Write-Host "📦 Instalando dependencias..." -ForegroundColor Yellow
+Write-Host "📦 Instalando dependencias de Node.js..." -ForegroundColor Yellow
 npm install --silent
+
+Write-Host "📦 Descargando último motor oficial de descarga (yt-dlp.exe)..." -ForegroundColor Yellow
+$binDir = Join-Path $targetDir "bin"
+if (-not (Test-Path $binDir)) {
+    New-Item -ItemType Directory -Path $binDir | Out-Null
+}
+$ytDlpPath = Join-Path $binDir "yt-dlp.exe"
+Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile $ytDlpPath
 
 Write-Host "🔗 Registrando comando global 'slurp'..." -ForegroundColor Yellow
 npm install -g $targetDir --silent
 
-Write-Host "`n🎉 ¡Slurp instalado correctamente en Windows!" -ForegroundColor Green
+Write-Host "`n🎉 ¡Slurp instalado correctamente en Windows con el último motor de descarga!" -ForegroundColor Green
 Write-Host "Uso: slurp --spotify <URL_SPOTIFY> o simplemente: slurp" -ForegroundColor Cyan
