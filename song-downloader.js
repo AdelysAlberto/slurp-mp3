@@ -1,0 +1,306 @@
+#!/usr/bin/env node
+
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import { spawn } from "child_process";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { join } from "path";
+import * as readline from "readline/promises";
+import { stdin as input, stdout as output } from "process";
+import { CONFIG, SONGS } from "./songs-config.js";
+import { getSpotifyTracks, parseSpotifyUrl } from "./spotify.js";
+import { ensureDependencies, detectOS } from "./doctor.js";
+
+const DOWNLOADS_PATH = CONFIG.downloadPath || "./downloads";
+
+// Prepara carpeta de descargas
+if (!existsSync(DOWNLOADS_PATH)) {
+  mkdirSync(DOWNLOADS_PATH, { recursive: true });
+}
+
+// Sanitizar nombres de archivo para compatibilidad en sistemas operativos (Windows, macOS, Linux)
+const sanitizeFilename = (filename) => {
+  return filename
+    .replace(/[<>:"/\\|?*]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, CONFIG.maxFilenameLength || 200);
+};
+
+// Actualiza una línea limpia en la terminal (sin llenar el TTY de spam)
+const updateLine = (text) => {
+  if (process.stdout.isTTY) {
+    process.stdout.clearLine(0);
+    process.stdout.cursorTo(0);
+    process.stdout.write(text);
+  } else {
+    console.log(text);
+  }
+};
+
+const commitLine = (text) => {
+  if (process.stdout.isTTY) {
+    process.stdout.clearLine(0);
+    process.stdout.cursorTo(0);
+  }
+  console.log(text);
+};
+
+// Descarga individual usando yt-dlp
+const downloadSong = async (ytDlpBin, songTitle, index, total) => {
+  const prefix = `[${String(index + 1).padStart(String(total).length, " ")}/${total}]`;
+  const sanitizedTitle = sanitizeFilename(songTitle);
+  const outputTemplate = `${DOWNLOADS_PATH}/${sanitizedTitle}.%(ext)s`;
+  const searchQuery = `ytsearch1:${songTitle}`;
+
+  updateLine(`${prefix} ⏳ Descargando: "${songTitle}"...`);
+
+  try {
+    await new Promise((resolve, reject) => {
+      const isWin = process.platform === "win32";
+      const ytdlp = spawn(
+        ytDlpBin,
+        [
+          "-x",
+          "--audio-format", "best",
+          "--audio-quality", CONFIG.audioQuality || "192K",
+          "--no-warnings",
+          "--quiet",
+          "-o", outputTemplate,
+          searchQuery
+        ],
+        { shell: isWin }
+      );
+
+      let errorOutput = "";
+
+      ytdlp.stderr.on("data", (data) => {
+        errorOutput += data.toString();
+      });
+
+      ytdlp.on("close", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(errorOutput.trim() || `Código de salida ${code}`));
+        }
+      });
+
+      ytdlp.on("error", (err) => {
+        reject(new Error(`Error ejecutando yt-dlp: ${err.message}`));
+      });
+    });
+
+    // Conversión a MP3 para este archivo específico
+    updateLine(`${prefix} 🎙️  Convirtiendo a MP3: "${songTitle}"...`);
+    await convertSingleTrackToMp3(sanitizedTitle);
+
+    commitLine(`${prefix} ✅ "${songTitle}.mp3" listo`);
+    return true;
+  } catch (error) {
+    commitLine(`${prefix} ❌ Error en "${songTitle}": ${error.message.split("\n")[0]}`);
+    return false;
+  }
+};
+
+// Convierte el archivo descargado a MP3 y elimina el formato intermedio
+const convertSingleTrackToMp3 = async (sanitizedTitle) => {
+  const files = readdirSync(DOWNLOADS_PATH).filter((f) =>
+    f.startsWith(sanitizedTitle) && /\.(webm|m4a|opus|ogg)$/i.test(f)
+  );
+
+  for (const file of files) {
+    const inputPath = join(DOWNLOADS_PATH, file);
+    const outputPath = join(DOWNLOADS_PATH, `${sanitizedTitle}.mp3`);
+
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn(ffmpegInstaller.path, [
+        "-i", inputPath,
+        "-vn",
+        "-ab", CONFIG.audioQuality ? `${CONFIG.audioQuality.toLowerCase().replace("k", "")}k` : "192k",
+        "-ar", "44100",
+        "-ac", "2",
+        "-y",
+        "-loglevel", "error",
+        outputPath
+      ]);
+
+      let errorOutput = "";
+
+      ffmpeg.stderr.on("data", (data) => {
+        errorOutput += data.toString();
+      });
+
+      ffmpeg.on("close", (code) => {
+        if (code === 0) {
+          try {
+            rmSync(inputPath);
+          } catch (_) {}
+          resolve();
+        } else {
+          reject(new Error(`ffmpeg falló: ${errorOutput}`));
+        }
+      });
+
+      ffmpeg.on("error", (err) => {
+        reject(new Error(`ffmpeg error: ${err.message}`));
+      });
+    });
+  }
+};
+
+const showHelp = () => {
+  console.log(`
+Uso de Slurp:
+  slurp                                   Modo interactivo (menú guiado)
+  slurp --spotify <URL_O_ID>              Descargar playlist de Spotify
+  slurp -s <URL_O_ID>                     Alias corto para Spotify
+  slurp <URL_O_ID>                        Detección automática de Spotify
+  slurp --doctor                          Verificar dependencias del sistema
+  slurp --help, -h                        Mostrar esta ayuda
+
+Ejemplos:
+  slurp --spotify https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+  slurp -s 37i9dQZF1DXcBWIGoYBM5M
+  slurp
+`);
+};
+
+// Flujo interactivo y CLI
+const run = async () => {
+  const args = process.argv.slice(2);
+
+  if (args.includes("--help") || args.includes("-h")) {
+    showHelp();
+    return;
+  }
+
+  const osInfo = detectOS();
+  console.log("\n" + "=".repeat(56));
+  console.log(`  ⚡ SLURP — MP3 Music Downloader [${osInfo.name}]`);
+  console.log("=".repeat(56));
+
+  // 1. Diagnóstico de dependencias
+  const ytDlpBin = await ensureDependencies();
+
+  if (args.includes("--doctor")) {
+    console.log("✅ Todas las dependencias e integraciones de Slurp están operativas.");
+    return;
+  }
+
+  const rl = readline.createInterface({ input, output });
+
+  try {
+    let songList = [];
+    let sourceName = "";
+
+    // Detección de banderas CLI: --spotify o -s
+    let spotifyArg = null;
+    const sIndex = args.findIndex((a) => a === "--spotify" || a === "-s");
+    if (sIndex !== -1 && args[sIndex + 1]) {
+      spotifyArg = args[sIndex + 1];
+    } else if (args[0] && !args[0].startsWith("-") && parseSpotifyUrl(args[0])) {
+      spotifyArg = args[0];
+    }
+
+    if (spotifyArg) {
+      console.log(`\n🔗 Procesando enlace de Spotify: ${spotifyArg}`);
+      updateLine("⏳ Conectando con Spotify y extrayendo canciones...");
+      const result = await getSpotifyTracks(spotifyArg, CONFIG.spotify || {});
+      sourceName = `Spotify (${result.name})`;
+      songList = result.songs;
+      commitLine(`✅ Playlist obtenida: "${result.name}"`);
+    } else {
+      console.log("\nSelecciona el origen de las canciones:");
+      console.log("  [1] Usar lista manual de 'songs-config.js'");
+      console.log("  [2] Ingresar URL / ID de Playlist de Spotify\n");
+
+      const option = (await rl.question("Elige una opción (1 o 2) [Default: 1]: ")).trim();
+
+      if (option === "2") {
+        const spotifyUrl = (await rl.question("\nPega la URL o ID de la playlist de Spotify: ")).trim();
+        if (!spotifyUrl) {
+          console.log("❌ No se proporcionó ninguna URL. Proceso cancelado.");
+          rl.close();
+          return;
+        }
+
+        updateLine("⏳ Conectando con Spotify y extrayendo canciones...");
+        const result = await getSpotifyTracks(spotifyUrl, CONFIG.spotify || {});
+        sourceName = `Spotify: ${result.name}`;
+        songList = result.songs;
+        commitLine(`✅ Playlist obtenida: "${result.name}"`);
+      } else {
+        sourceName = "Archivo local (songs-config.js)";
+        songList = (SONGS || [])
+          .map((s) => (typeof s === "string" ? s.trim() : ""))
+          .filter((s) => s.length > 0);
+      }
+    }
+
+    if (songList.length === 0) {
+      console.log("\n⚠️  No se encontraron canciones para procesar.");
+      rl.close();
+      return;
+    }
+
+    // Resumen inicial
+    console.log("\n" + "─".repeat(56));
+    console.log(`📋 Origen:               ${sourceName}`);
+    console.log(`🎶 Canciones detectadas: ${songList.length} pista(s)`);
+    console.log("─".repeat(56));
+
+    console.log("\nMuestra de canciones a descargar:");
+    const previewCount = Math.min(5, songList.length);
+    for (let i = 0; i < previewCount; i++) {
+      console.log(`  ${i + 1}. ${songList[i]}`);
+    }
+    if (songList.length > 5) {
+      console.log(`  ... y ${songList.length - 5} canción(es) más.`);
+    }
+
+    // Pregunta de confirmación
+    const confirm = (await rl.question(`\n¿Deseas iniciar la descarga de estas ${songList.length} canciones? (s/n) [s]: `)).trim().toLowerCase();
+    rl.close();
+
+    if (confirm === "n" || confirm === "no") {
+      console.log("\n🛑 Descarga cancelada por el usuario.");
+      return;
+    }
+
+    console.log("\n🚀 Iniciando proceso de descarga y conversión a MP3...");
+    console.log(`📁 Carpeta de destino: ${DOWNLOADS_PATH}\n`);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < songList.length; i++) {
+      const song = songList[i];
+      const ok = await downloadSong(ytDlpBin, song, i, songList.length);
+
+      if (ok) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+
+      // Pausa configurable entre canciones
+      if (i < songList.length - 1) {
+        const delay = CONFIG.delayBetweenDownloads || 2000;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    console.log("\n" + "=".repeat(56));
+    console.log("📊 Resumen de Descarga:");
+    console.log(`   ✅ Descargadas exitosamente: ${successCount}`);
+    console.log(`   ❌ Descargas fallidas:      ${errorCount}`);
+    console.log(`   📁 Carpeta:                  ${DOWNLOADS_PATH}`);
+    console.log("=".repeat(56) + "\n");
+  } catch (err) {
+    rl.close();
+    console.error(`\n💥 Error en el proceso: ${err.message}`);
+    process.exit(1);
+  }
+};
+
+run();

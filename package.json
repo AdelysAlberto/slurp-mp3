@@ -1,0 +1,30 @@
+{
+  "name": "slurp",
+  "version": "1.3.0",
+  "description": "Descargador y conversor automatizado de canciones y playlists de Spotify a MP3 en alta calidad",
+  "type": "module",
+  "main": "song-downloader.js",
+  "bin": {
+    "slurp": "./song-downloader.js",
+    "mp3": "./song-downloader.js"
+  },
+  "scripts": {
+    "start": "node song-downloader.js",
+    "slurp": "node song-downloader.js",
+    "doctor": "node song-downloader.js --doctor"
+  },
+  "keywords": [
+    "slurp",
+    "mp3",
+    "downloader",
+    "spotify",
+    "youtube",
+    "audio",
+    "windows",
+    "macos",
+    "linux"
+  ],
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+downloads/
+bin/
+*.webm
+*.m4a
+*.opus
+*.ogg
+.DS_Store
+*.log
