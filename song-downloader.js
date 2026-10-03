@@ -19,9 +19,9 @@ const __dirname = dirname(__filename);
 const getVersion = () => {
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8"));
-    return pkg.version || "1.3.0";
+    return pkg.version || "1.3.1";
   } catch (_) {
-    return "1.3.0";
+    return "1.3.1";
   }
 };
 
@@ -93,14 +93,15 @@ const commitLine = (text) => {
 const downloadSong = async (ytDlpBin, targetFolder, songTitle, index, total, retried = false) => {
   const prefix = `[${String(index + 1).padStart(String(total).length, " ")}/${total}]`;
   const sanitizedTitle = sanitizeFilename(songTitle);
-  const outputTemplate = `${targetFolder}/${sanitizedTitle}.%(ext)s`;
+  const templateTitle = sanitizedTitle.replace(/%/g, "%%");
+  const outputTemplate = join(targetFolder, `${templateTitle}.%(ext)s`);
   const searchQuery = `ytsearch1:${songTitle}`;
 
   updateLine(`${prefix} ⏳ Descargando: "${songTitle}"...`);
 
   try {
     await new Promise((resolve, reject) => {
-      const isWin = process.platform === "win32";
+      const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(ytDlpBin);
       const ytdlp = spawn(
         ytDlpBin,
         [
@@ -112,7 +113,7 @@ const downloadSong = async (ytDlpBin, targetFolder, songTitle, index, total, ret
           "-o", outputTemplate,
           searchQuery
         ],
-        { shell: isWin }
+        { shell: needsShell }
       );
 
       let errorOutput = "";

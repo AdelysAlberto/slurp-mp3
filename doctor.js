@@ -40,6 +40,12 @@ export const resolveYtDlpBinary = () => {
   }
 
   if (isCommandInPath("yt-dlp")) {
+    if (isWin) {
+      try {
+        const out = execSync("where yt-dlp", { encoding: "utf8" }).trim().split(/\r?\n/)[0];
+        if (out && existsSync(out)) return out;
+      } catch (_) {}
+    }
     return "yt-dlp";
   }
 
