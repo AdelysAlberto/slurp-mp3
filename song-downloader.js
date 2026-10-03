@@ -220,7 +220,8 @@ const handleUpdate = () => {
 
   try {
     console.log(`📦 Obteniendo últimos cambios de GitHub en ${repoDir}...`);
-    execSync("git pull origin main", { cwd: repoDir, stdio: "inherit" });
+    execSync("git fetch origin main", { cwd: repoDir, stdio: "inherit" });
+    execSync("git reset --hard origin/main", { cwd: repoDir, stdio: "inherit" });
     console.log("📦 Verificando dependencias...");
     execSync("npm install --silent", { cwd: repoDir, stdio: "inherit" });
     console.log("🔗 Registrando última versión global...");

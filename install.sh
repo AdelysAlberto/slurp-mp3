@@ -18,7 +18,8 @@ fi
 if [ -d "$TARGET_DIR" ]; then
   echo "🔄 Actualizando Slurp en $TARGET_DIR..."
   cd "$TARGET_DIR"
-  git pull origin main || true
+  git fetch origin main
+  git reset --hard origin/main
 else
   echo "📦 Clonando repositorio en $TARGET_DIR..."
   git clone https://github.com/AdelysAlberto/slurp-mp3.git "$TARGET_DIR"

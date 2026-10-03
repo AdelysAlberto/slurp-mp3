@@ -18,7 +18,8 @@ $targetDir = Join-Path $HOME ".slurp"
 if (Test-Path $targetDir) {
     Write-Host "🔄 Actualizando Slurp..." -ForegroundColor Yellow
     Set-Location $targetDir
-    git pull origin main
+    git fetch origin main
+    git reset --hard origin/main
 } else {
     Write-Host "📦 Clonando repositorio en $targetDir..." -ForegroundColor Yellow
     git clone https://github.com/AdelysAlberto/slurp-mp3.git $targetDir
