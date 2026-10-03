@@ -138,7 +138,16 @@ Y ejecute:
 slurp
 ```
 
-### 4. Diagnóstico de Salud del Sistema
+### 4. Actualización Automática
+Para actualizar Slurp a la última versión con un solo comando:
+
+```bash
+slurp update
+# o
+slurp upgrade
+```
+
+### 5. Diagnóstico de Salud del Sistema
 Para validar que los binarios y códecs de su equipo estén listos:
 
 ```bash

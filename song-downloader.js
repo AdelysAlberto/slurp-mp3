@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import { spawn } from "child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
-import { join } from "path";
+import { spawn, execSync } from "child_process";
+import { existsSync, mkdirSync, readdirSync, rmSync, readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 import { CONFIG, SONGS } from "./songs-config.js";
 import { getSpotifyTracks, parseSpotifyUrl } from "./spotify.js";
 import { ensureDependencies, detectOS } from "./doctor.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const DOWNLOADS_PATH = CONFIG.downloadPath || "./downloads";
 
@@ -16,6 +20,16 @@ const DOWNLOADS_PATH = CONFIG.downloadPath || "./downloads";
 if (!existsSync(DOWNLOADS_PATH)) {
   mkdirSync(DOWNLOADS_PATH, { recursive: true });
 }
+
+// Obtener versión desde package.json
+const getVersion = () => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8"));
+    return pkg.version || "1.3.0";
+  } catch (_) {
+    return "1.3.0";
+  }
+};
 
 // Sanitizar nombres de archivo para compatibilidad en sistemas operativos (Windows, macOS, Linux)
 const sanitizeFilename = (filename) => {
@@ -148,19 +162,51 @@ const convertSingleTrackToMp3 = async (sanitizedTitle) => {
   }
 };
 
+// Actualización automática desde git
+const handleUpdate = () => {
+  console.log("\n" + "=".repeat(56));
+  console.log("  🔄 SLURP — Actualizador del Sistema");
+  console.log("=".repeat(56));
+
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const candidates = [__dirname, join(homeDir, ".slurp")];
+  const repoDir = candidates.find((d) => existsSync(join(d, ".git")));
+
+  if (!repoDir) {
+    console.error("❌ No se encontró la instalación local de Slurp para actualizar.");
+    process.exit(1);
+  }
+
+  try {
+    console.log(`📦 Obteniendo últimos cambios de GitHub en ${repoDir}...`);
+    execSync("git pull origin main", { cwd: repoDir, stdio: "inherit" });
+    console.log("📦 Verificando dependencias...");
+    execSync("npm install --silent", { cwd: repoDir, stdio: "inherit" });
+    console.log("🔗 Registrando última versión global...");
+    execSync(`npm install -g "${repoDir}" --silent`, { stdio: "inherit" });
+    console.log("\n🎉 ¡Slurp se ha actualizado correctamente a la última versión!\n");
+  } catch (err) {
+    console.error(`\n❌ Error durante la actualización: ${err.message}`);
+    process.exit(1);
+  }
+};
+
 const showHelp = () => {
   console.log(`
-Uso de Slurp:
+Uso de Slurp (v${getVersion()}):
   slurp                                   Modo interactivo (menú guiado)
   slurp --spotify <URL_O_ID>              Descargar playlist de Spotify
   slurp -s <URL_O_ID>                     Alias corto para Spotify
   slurp <URL_O_ID>                        Detección automática de Spotify
+  slurp update, upgrade, --update         Actualizar Slurp a la última versión
   slurp --doctor                          Verificar dependencias del sistema
+  slurp --version, -v                     Mostrar versión instalada
   slurp --help, -h                        Mostrar esta ayuda
 
 Ejemplos:
   slurp --spotify https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
   slurp -s 37i9dQZF1DXcBWIGoYBM5M
+  slurp update
   slurp
 `);
 };
@@ -174,9 +220,19 @@ const run = async () => {
     return;
   }
 
+  if (args.includes("--version") || args.includes("-v") || args[0] === "version") {
+    console.log(`slurp v${getVersion()}`);
+    return;
+  }
+
+  if (args[0] === "update" || args[0] === "upgrade" || args.includes("--update")) {
+    handleUpdate();
+    return;
+  }
+
   const osInfo = detectOS();
   console.log("\n" + "=".repeat(56));
-  console.log(`  ⚡ SLURP — MP3 Music Downloader [${osInfo.name}]`);
+  console.log(`  ⚡ SLURP (v${getVersion()}) — MP3 Music Downloader [${osInfo.name}]`);
   console.log("=".repeat(56));
 
   // 1. Diagnóstico de dependencias
