@@ -21,7 +21,7 @@ if (Test-Path $targetDir) {
     git pull origin main
 } else {
     Write-Host "📦 Clonando repositorio en $targetDir..." -ForegroundColor Yellow
-    git clone https://github.com/AdelysAlberto/slurp.git $targetDir
+    git clone https://github.com/AdelysAlberto/slurp-mp3.git $targetDir
     Set-Location $targetDir
 }
 

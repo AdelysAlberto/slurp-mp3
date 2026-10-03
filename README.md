@@ -31,20 +31,20 @@ Permite pasar directamente el enlace de cualquier playlist pública de Spotify, 
 Ejecute la siguiente instrucción en su terminal para clonar, configurar dependencias y registrar el comando global `slurp`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AdelysAlberto/slurp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AdelysAlberto/slurp-mp3/main/install.sh | bash
 ```
 
 ### Opción B: Instalación en Windows (PowerShell)
 Abra PowerShell y ejecute:
 
 ```powershell
-irm https://raw.githubusercontent.com/AdelysAlberto/slurp/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/AdelysAlberto/slurp-mp3/main/install.ps1 | iex
 ```
 
 ### Opción C: Clonación Manual desde Repositorio (Cualquier SO)
 ```bash
-git clone https://github.com/AdelysAlberto/slurp.git
-cd slurp
+git clone https://github.com/AdelysAlberto/slurp-mp3.git
+cd slurp-mp3
 npm install
 npm link
 ```
@@ -171,7 +171,7 @@ export const CONFIG = {
 ## Repository Architecture
 
 ```
-slurp/
+slurp-mp3/
 ├── .gitignore            # Exclusión de descargas, binarios y node_modules
 ├── LICENSE               # Licencia MIT del proyecto
 ├── README.md             # Documentación oficial
