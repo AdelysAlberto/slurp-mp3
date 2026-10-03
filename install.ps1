@@ -29,7 +29,7 @@ Write-Host "📦 Instalando dependencias..." -ForegroundColor Yellow
 npm install --silent
 
 Write-Host "🔗 Registrando comando global 'slurp'..." -ForegroundColor Yellow
-npm link --silent
+npm install -g $targetDir --silent
 
 Write-Host "`n🎉 ¡Slurp instalado correctamente en Windows!" -ForegroundColor Green
 Write-Host "Uso: slurp --spotify <URL_SPOTIFY> o simplemente: slurp" -ForegroundColor Cyan

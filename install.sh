@@ -28,8 +28,8 @@ fi
 echo "📦 Instalando dependencias de Node.js..."
 npm install --silent
 
-echo "🔗 Vinculando comando global 'slurp'..."
-npm link --silent || sudo npm link --silent
+echo "🔗 Registrando comando global 'slurp'..."
+npm install -g "$TARGET_DIR" --silent || npm link --silent
 
 echo ""
 echo "🎉 ¡Slurp instalado correctamente!"
